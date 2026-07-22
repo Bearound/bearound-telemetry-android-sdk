@@ -5,30 +5,38 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
 
-    <!-- BEAROUND TELEMETRY — Bluetooth scan WITH neverForLocation and NO location
-         permissions. On Android 12+ scanning works with the "Nearby devices" grant
-         alone: Location toggle off, location denied — telemetry keeps flowing. The
-         assertion is what makes that possible (without it Android silently withholds
-         EVERY scan result unless the app also holds ACCESS_FINE_LOCATION — verified
-         on-device). Accepted trade-offs:
-           - OEM denylists may filter beacon-shaped packets (Moto stock drops records
-             containing the iBeacon signature — the HarvestScanManager works around it
-             by collecting pure-BEAD frames on the callback path, field-validated on a
-             G35/Android 15, 2026-07-22);
-           - scan results must never be used to derive device location (Play assertion).
-         Android ≤ 11: the legacy scan gate is location, which this artifact does not
-         declare — effective collection there requires the HOST app to hold location.
-         MERGE WARNING: if ANY manifest in the merge declares BLUETOOTH_SCAN without
-         this flag, the flag is dropped and telemetry goes blind for users without
-         location. Never combine with the Bearound SDK artifact — the shared
-         io.bearound.sdkguard.BearoundVariantGuard class turns that mistake into a
-         duplicate-class build error. -->
+    <!-- BEAROUND TELEMETRY — Bluetooth scan declared WITH neverForLocation and NO
+         location permissions. The final regime is decided by the HOST app's manifest
+         merge, and the SDK adapts at runtime (ManifestPermissionMode) — this is what
+         makes it plug & play with the Bearound SDK:
+
+         STANDALONE (only this SDK in the app): the flag survives the merge →
+         Bluetooth-only regime. On Android 12+ scanning works with the "Nearby
+         devices" grant alone — Location toggle off, location denied, telemetry keeps
+         flowing. Trade-offs of this regime, both handled:
+           - OEM denylists may withhold beacon-shaped packets from PendingIntent
+             deliveries (Moto stock drops records containing the iBeacon signature) —
+             HarvestScanManager collects the pure-BEAD frames on the callback path
+             (field-validated on a G35/Android 15, 2026-07-22);
+           - scan results must never be used to derive device location (Play
+             assertion) — this SDK's domain is beacon health, not positioning.
+
+         COMPANION (the app also ships the Bearound SDK, which declares
+         BLUETOOTH_SCAN WITHOUT the flag): the merge drops the flag — INTENTIONAL
+         here. The whole app runs location-capable: no denylist, full PendingIntent
+         deliveries, harvest disabled automatically; results flow while location is
+         granted+on, driven by the tracking SDK's own permission UX.
+
+         Android ≤ 11: the legacy scan gate is location — standalone collection
+         effectively starts at Android 12; in companion mode the tracking SDK's
+         location permission covers it. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation"
         tools:targetApi="s" />
 
-    <!-- NO ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION — by design. Hosts carry no
-         "Location" entry in Play Data Safety on account of this SDK. -->
+    <!-- NO ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION — by design. Standalone
+         hosts carry no "Location" entry in Play Data Safety on account of this SDK;
+         in companion mode the location declaration comes from the Bearound SDK. -->
 
     <!-- Internet for API communication -->
     <uses-permission android:name="android.permission.INTERNET" />

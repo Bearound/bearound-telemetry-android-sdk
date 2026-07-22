@@ -1,0 +1,71 @@
+# Bearound Telemetry — AI agent setup prompt
+
+Hover the block below and click the **copy icon** in its top-right corner to copy
+the prompt, then paste it into your AI coding agent (Claude Code, Cursor, Copilot, …)
+with your app's repo open. The agent reads the [SDK README](./README.md) and wires
+the full integration.
+
+```text
+Integrate the Bearound Telemetry SDK (com.github.Bearound:bearound-telemetry-android-sdk)
+into this native Android (Kotlin/Java) app. First READ the SDK's README end to end —
+especially "Two integration modes", "Permissions" and "Quick Start" — then do ALL of
+the following.
+
+1. Detect the integration MODE first: search the app's dependencies for
+   com.github.Bearound:bearound-android-sdk (the Bearound tracking SDK).
+   - If present → COMPANION mode: the two SDKs are plug & play; the manifest merge
+     intentionally drops neverForLocation and the telemetry SDK adapts at runtime.
+     Do NOT add any tools:replace for BLUETOOTH_SCAN.
+   - If absent → STANDALONE mode: telemetry must keep the neverForLocation flag in
+     the merged manifest (step 4 audits it).
+
+2. Install: add the JitPack repository — maven("https://jitpack.io") under
+   dependencyResolutionManagement in settings.gradle(.kts) (or allprojects in a
+   legacy root build.gradle) — then add
+   implementation("com.github.Bearound:bearound-telemetry-android-sdk:main-SNAPSHOT")
+   to the app module's build.gradle(.kts) and sync Gradle (pin the tagged version once
+   a release exists). If the app module's compileSdk is below 35 or the project AGP is
+   below 8.6.0, RAISE them (compileSdk 35+, AGP 8.6.0+) BEFORE syncing —
+   androidx.core 1.16.0 is pulled transitively and requires it. AGP 8.6.0+ also needs
+   Gradle wrapper 8.7+ — bump distributionUrl in
+   gradle/wrapper/gradle-wrapper.properties in lockstep.
+
+3. Permissions: the SDK's manifest merge already injects everything it needs
+   (BLUETOOTH_SCAN with neverForLocation, legacy BLUETOOTH/BLUETOOTH_ADMIN ≤ API 30,
+   INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, RECEIVE_BOOT_COMPLETED,
+   POST_NOTIFICATIONS, FOREGROUND_SERVICE + FOREGROUND_SERVICE_CONNECTED_DEVICE).
+   Do NOT re-declare them and do NOT add any location permission on behalf of this
+   SDK — running without location is its purpose. In COMPANION mode the location
+   permissions come from the tracking SDK and that is expected.
+
+4. STANDALONE mode only — audit the merged manifest: run
+   ./gradlew :app:processDebugMainManifest and inspect
+   app/build/intermediates/merged_manifests/debug/.../AndroidManifest.xml. CONFIRM
+   BLUETOOTH_SCAN still carries usesPermissionFlags="neverForLocation". If any other
+   library dropped it, re-declare in the app manifest forcing the flag to win:
+   <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+   android:usesPermissionFlags="neverForLocation"
+   tools:replace="android:usesPermissionFlags" /> — and add xmlns:tools to <manifest>.
+   In COMPANION mode SKIP this step: the flag being dropped is intentional.
+
+5. Configure + start (Quick Start): get the singleton with
+   BearoundTelemetrySDK.getInstance(context), call
+   configure(businessToken = <ASK ME FOR IT — same token as the main Bearound SDK>),
+   then request the runtime permissions with an
+   ActivityResultContracts.RequestMultiplePermissions launcher — BLUETOOTH_SCAN on
+   Android 12+ (S+); in COMPANION mode bundle it into the same launcher as the
+   tracking SDK's location permissions so the user sees one flow — and call
+   startScanning() once granted. In COMPANION mode also initialize the tracking SDK
+   exactly as its own README says; the two configure/start calls are independent.
+
+6. Validate: build, install on a physical device with a Bearound beacon nearby, and
+   check logcat for tags BearoundTelemetrySDK* (scan registration, batch sync) —
+   with, in STANDALONE mode on Android 12+, the system Location toggle turned OFF to
+   prove the no-location regime; readings must keep flowing. On Moto/realme devices
+   expect "harvest" log lines in standalone mode — that is the OEM-denylist workaround
+   working, not an error. Report back: mode detected, merged-manifest flag state,
+   and the logcat evidence of the first successful sync.
+
+Ask me for: the business token; whether this app should also ship the Bearound
+tracking SDK (decides the mode in step 1).
+```

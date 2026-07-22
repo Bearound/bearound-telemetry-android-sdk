@@ -61,6 +61,10 @@ internal object HarvestScanManager {
     @SuppressLint("MissingPermission") // callers run inside permission-gated paths
     fun start(context: Context, reason: String) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        // Companion regime (merged manifest lost the flag because the Bearound SDK is
+        // present): no denylist applies and PendingIntent deliveries are complete — an
+        // empty delivery just means no beacon around, so harvesting would waste battery.
+        if (!io.bearound.telemetry.utilities.ManifestPermissionMode.hasNeverForLocation(context)) return
         if (callback != null) return
 
         val now = SystemClock.elapsedRealtime()
