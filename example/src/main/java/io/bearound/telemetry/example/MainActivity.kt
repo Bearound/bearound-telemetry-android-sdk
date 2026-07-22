@@ -1,91 +1,147 @@
 package io.bearound.telemetry.example
 
 import android.Manifest
-import android.app.Activity
-import android.content.pm.PackageInfo
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.widget.Button
-import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.TextView
-import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.BluetoothSearching
+import androidx.compose.material.icons.filled.Cancel
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Sensors
+import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Vibration
+import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import io.bearound.telemetry.BearoundTelemetrySDK
+import io.bearound.telemetry.example.ui.theme.BearoundTelemetryTheme
 import io.bearound.telemetry.interfaces.BearoundTelemetrySDKListener
 import io.bearound.telemetry.models.Beacon
+import kotlinx.coroutines.delay
 
 /**
- * Standalone sample: telemetry only. Shows live what the SDK is detecting —
- * beacon identity, RSSI and the sensor payload (battery/temperature) — plus the
- * device id and sync results. Business token comes from local.properties
- * (BUSINESS_TOKEN=...), never committed.
+ * Bearound Telemetry — sample app.
+ *
+ * Shows EXCLUSIVELY beacon-hardware telemetry (battery, temperature, movement,
+ * firmware, signal). No tracking, no proximity, no location — by design.
+ * Same visual family as the Bearound SDK sample (BeAroundScan).
  */
-class MainActivity : Activity(), BearoundTelemetrySDKListener {
+class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
 
-    private lateinit var statusView: TextView
     private lateinit var sdk: BearoundTelemetrySDK
 
-    private val lastSeen = LinkedHashMap<String, Beacon>()
-    private var syncOk = 0
-    private var syncFail = 0
-    private var scanning = false
+    private val beaconsState = mutableStateMapOf<String, Beacon>()
+    private val collecting = mutableStateOf(false)
+    private val syncOk = mutableIntStateOf(0)
+    private val syncFail = mutableIntStateOf(0)
+    private val nearbyGranted = mutableStateOf(false)
+    private val btOn = mutableStateOf(false)
 
-    private val handler = Handler(Looper.getMainLooper())
-    private val refresh = object : Runnable {
-        override fun run() {
-            render()
-            handler.postDelayed(this, 2_000)
+    private val permissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            refreshEnvironment()
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         sdk = BearoundTelemetrySDK.getInstance(applicationContext)
         sdk.listener = this
+        refreshEnvironment()
 
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(pad, pad, pad, pad)
-        }
-        statusView = TextView(this).apply {
-            typeface = Typeface.MONOSPACE
-            textSize = 12f
-        }
-        root.addView(statusView)
-
-        root.addButton("1. Conceder permissão (Nearby)") {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                requestPermissions(arrayOf(Manifest.permission.BLUETOOTH_SCAN), 1)
-            } else {
-                toast("Nada a pedir nesta versão")
+        setContent {
+            BearoundTelemetryTheme {
+                TelemetryScreen(
+                    nearbyGranted = nearbyGranted.value,
+                    btOn = btOn.value,
+                    collecting = collecting.value,
+                    deviceId = sdk.deviceId,
+                    syncOk = syncOk.intValue,
+                    syncFail = syncFail.intValue,
+                    beacons = beaconsState.values.sortedBy { it.minor },
+                    onRequestPermission = ::requestNearby,
+                    onStart = ::startCollection,
+                    onStop = ::stopCollection,
+                )
             }
         }
-        root.addButton("2. Iniciar telemetria") {
-            sdk.configure(businessToken = BuildConfig.BUSINESS_TOKEN)
-            sdk.startScanning()
-            render()
-        }
-        root.addButton("Parar") {
-            sdk.stopScanning()
-            render()
-        }
-
-        setContentView(ScrollView(this).apply { addView(root) })
     }
 
     override fun onResume() {
         super.onResume()
-        handler.post(refresh)
+        refreshEnvironment()
     }
 
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacks(refresh)
+    private fun refreshEnvironment() {
+        nearbyGranted.value = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+        btOn.value = (getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)
+            ?.adapter?.isEnabled == true
+    }
+
+    private fun requestNearby() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissionLauncher.launch(arrayOf(Manifest.permission.BLUETOOTH_SCAN))
+        }
+    }
+
+    private fun startCollection() {
+        sdk.configure(businessToken = BuildConfig.BUSINESS_TOKEN)
+        sdk.startScanning()
+        collecting.value = true
+    }
+
+    private fun stopCollection() {
+        sdk.stopScanning()
+        collecting.value = false
     }
 
     // -------------------------------------------------------------------------
@@ -94,76 +150,314 @@ class MainActivity : Activity(), BearoundTelemetrySDKListener {
 
     override fun onBeaconsUpdated(beacons: List<Beacon>) {
         runOnUiThread {
-            for (b in beacons) lastSeen["${b.major}/${b.minor}"] = b
-            render()
-        }
-    }
-
-    override fun onScanningStateChanged(isScanning: Boolean) {
-        runOnUiThread {
-            scanning = isScanning
-            render()
+            for (b in beacons) beaconsState["${b.major}/${b.minor}"] = b
         }
     }
 
     override fun onSyncCompleted(beaconCount: Int, success: Boolean, error: Exception?) {
-        runOnUiThread {
-            if (success) syncOk++ else syncFail++
-            render()
+        runOnUiThread { if (success) syncOk.intValue++ else syncFail.intValue++ }
+    }
+}
+
+// =============================================================================
+// UI
+// =============================================================================
+
+@Composable
+private fun TelemetryScreen(
+    nearbyGranted: Boolean,
+    btOn: Boolean,
+    collecting: Boolean,
+    deviceId: String,
+    syncOk: Int,
+    syncFail: Int,
+    beacons: List<Beacon>,
+    onRequestPermission: () -> Unit,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000)
+            now = System.currentTimeMillis()
         }
     }
 
-    override fun onError(error: Exception) {
-        runOnUiThread { toast("Erro: ${error.message}") }
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Bearound Telemetry", fontWeight = FontWeight.Bold) }
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item { AboutBanner() }
+            item { EnvironmentCard(nearbyGranted, btOn, onRequestPermission) }
+            item { CollectionCard(collecting, deviceId, syncOk, syncFail, nearbyGranted, btOn, onStart, onStop) }
+            item {
+                Text(
+                    "Telemetria dos beacons (${beacons.size})",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+            if (beacons.isEmpty()) {
+                item { EmptyState(collecting) }
+            }
+            items(beacons, key = { "${it.major}/${it.minor}" }) { beacon ->
+                BeaconTelemetryCard(beacon, now)
+            }
+            item { Spacer(Modifier.height(16.dp)) }
+        }
     }
+}
 
-    // -------------------------------------------------------------------------
+@Composable
+private fun AboutBanner() {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Filled.MonitorHeart,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Saúde da frota de beacons: bateria, temperatura, movimento e sinal. " +
+                    "Este SDK não faz rastreio de pessoas.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        }
+    }
+}
 
-    private fun render() {
-        val now = System.currentTimeMillis()
-        statusView.text = buildString {
-            appendLine("BEAROUND TELEMETRY — EXAMPLE (standalone)")
-            appendLine()
-            appendLine("deviceId : ${sdk.deviceId}")
-            appendLine("scanning : $scanning")
-            appendLine("manifest : ${flagState()}")
-            appendLine("sync     : $syncOk ok / $syncFail falhas")
-            appendLine()
-            if (lastSeen.isEmpty()) {
-                appendLine("(nenhum beacon detectado ainda)")
-            } else {
-                appendLine("beacons (${lastSeen.size}):")
-                lastSeen.values.forEach { b ->
-                    val meta = b.metadata?.let {
-                        "batt ${it.batteryLevel}mV  ${it.temperature}°C  fw${it.firmwareVersion}"
-                    } ?: "(sem payload de sensor ainda)"
-                    appendLine("• ${b.major}/${b.minor}  rssi ${b.rssi}  $meta")
-                    appendLine("  ${(now - b.timestamp.time) / 1000}s atrás  ${b.proximity}")
-                }
+@Composable
+private fun EnvironmentCard(nearbyGranted: Boolean, btOn: Boolean, onRequestPermission: () -> Unit) {
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Ambiente", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            StatusRow(
+                icon = Icons.Filled.BluetoothSearching,
+                label = "Dispositivos próximos",
+                ok = nearbyGranted,
+                okText = "Concedida",
+                badText = "Negada",
+                action = if (!nearbyGranted) onRequestPermission else null,
+            )
+            StatusRow(
+                icon = Icons.Filled.Bluetooth,
+                label = "Bluetooth",
+                ok = btOn,
+                okText = "Ligado",
+                badText = "Desligado",
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.LocationOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.width(10.dp))
+                Text("Localização", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "não necessária",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
     }
+}
 
-    private fun flagState(): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return "n/a (< Android 12)"
-        return try {
-            val pi = packageManager.getPackageInfo(packageName, PackageManager.GET_PERMISSIONS)
-            val idx = pi.requestedPermissions?.indexOf(Manifest.permission.BLUETOOTH_SCAN) ?: -1
-            val flags = pi.requestedPermissionsFlags?.getOrNull(idx) ?: 0
-            if ((flags and PackageInfo.REQUESTED_PERMISSION_NEVER_FOR_LOCATION) != 0)
-                "neverForLocation OK" else "FLAG PERDIDA (conflito de merge!)"
-        } catch (e: Exception) {
-            "?"
+@Composable
+private fun StatusRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    ok: Boolean,
+    okText: String,
+    badText: String,
+    action: (() -> Unit)? = null,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(10.dp))
+        Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Icon(
+            if (ok) Icons.Filled.CheckCircle else Icons.Filled.Cancel,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            if (ok) okText else badText,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+        )
+        if (action != null) {
+            Spacer(Modifier.width(4.dp))
+            TextButton(onClick = action) { Text("Solicitar") }
         }
     }
+}
 
-    private fun LinearLayout.addButton(label: String, onClick: () -> Unit) {
-        addView(Button(context).apply {
-            text = label
-            isAllCaps = false
-            setOnClickListener { onClick() }
-        })
+@Composable
+private fun CollectionCard(
+    collecting: Boolean,
+    deviceId: String,
+    syncOk: Int,
+    syncFail: Int,
+    nearbyGranted: Boolean,
+    btOn: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Card {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Coleta", style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(
+                    if (collecting) "Coletando" else "Parada",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (collecting) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column {
+                Text("Device ID", style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(deviceId, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+            }
+            Text(
+                "Sincronizações: $syncOk ok · $syncFail falhas",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Button(
+                    onClick = onStart,
+                    enabled = !collecting && nearbyGranted && btOn,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Iniciar coleta") }
+                OutlinedButton(
+                    onClick = onStop,
+                    enabled = collecting,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Parar") }
+            }
+        }
     }
+}
 
-    private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+@Composable
+private fun EmptyState(collecting: Boolean) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(
+                Icons.Filled.Sensors,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                if (collecting) "Procurando beacons por perto…"
+                else "Inicie a coleta para ver a telemetria dos beacons.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BeaconTelemetryCard(beacon: Beacon, now: Long) {
+    val meta = beacon.metadata
+    val age = ((now - beacon.timestamp.time) / 1000).coerceAtLeast(0)
+    Card {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Sensors,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Beacon ${beacon.major}.${beacon.minor}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    "há ${age}s",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Metric(Icons.Filled.BatteryFull, meta?.batteryLevel?.let { "$it mV" } ?: "—", "Bateria")
+                Metric(Icons.Filled.Thermostat, meta?.temperature?.let { "$it °C" } ?: "—", "Temperatura")
+                Metric(Icons.Filled.Vibration, meta?.movements?.toString() ?: "—", "Movimentos")
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Metric(Icons.Filled.Bluetooth, "${beacon.rssi} dB", "Sinal")
+                Metric(Icons.Filled.Memory, meta?.firmwareVersion ?: "—", "Firmware")
+                Spacer(Modifier.width(64.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun Metric(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    label: String,
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }

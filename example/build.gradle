@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.1.0'
 }
 
 // Read BUSINESS_TOKEN from local.properties (gitignored) or env var — never commit it.
@@ -17,6 +18,7 @@ android {
     compileSdk = 36
 
     buildFeatures {
+        compose = true
         buildConfig = true
     }
 
@@ -41,9 +43,24 @@ android {
     }
     kotlinOptions {
         jvmTarget = '11'
+        freeCompilerArgs += [
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api"
+        ]
     }
 }
 
 dependencies {
     implementation project(':sdk')
+
+    // Core Android
+    implementation 'androidx.core:core-ktx:1.16.0'
+
+    // Jetpack Compose — mirrors the Bearound SDK sample app
+    implementation platform('androidx.compose:compose-bom:2025.12.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.ui:ui-graphics'
+    implementation 'androidx.compose.material3:material3'
+    implementation 'androidx.compose.material:material-icons-extended'
+    implementation 'androidx.activity:activity-compose:1.9.3'
+    implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.9.1'
 }

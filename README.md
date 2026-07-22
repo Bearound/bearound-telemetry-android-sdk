@@ -4,11 +4,18 @@
 [![API](https://img.shields.io/badge/API-23%2B-brightgreen.svg?style=flat)](https://android-arsenal.com/api?level=23)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Kotlin SDK for Android — **fleet-health telemetry for Bearound BLE beacons** (battery,
+Kotlin SDK for Android — **hardware telemetry for Bearound BLE beacons** (battery,
 temperature, movement, firmware, signal), designed to run **without any location
 permission**. Companion to the
 [Bearound SDK](https://github.com/Bearound/bearound-android-sdk) (tracking): plug & play
 alongside it, or standalone in apps that cannot ask for location.
+
+> [!IMPORTANT]
+> **This SDK does not track people.** It never collects, derives or uploads user location,
+> proximity or positioning of any kind — its data is **exclusively telemetry about the
+> beacon hardware** (fleet health). Tracking and indoor positioning live in the
+> [Bearound SDK](https://github.com/Bearound/bearound-android-sdk); install both when you
+> need both.
 
 > [!TIP]
 > **⚡ Set it up with an AI agent.** Don't wire the integration by hand — hand
@@ -28,13 +35,16 @@ alongside it, or standalone in apps that cannot ask for location.
 Per detected Bearound beacon — passively, from BLE advertisements only (it never connects):
 
 - **Identity**: UUID / major / minor
-- **Battery** level and **temperature** (from the `0xBEAD` 11-byte sensor payload)
+- **Battery** level and **temperature** (from the beacon's sensor payload)
 - **Movement counter** and **firmware version**
 - **Signal**: RSSI
 
 Detection matches every Bearound hardware generation — `0xBEAD` service data, `0xBEAD`
 manufacturer data, and the Bearound iBeacon frame (identity-only until a sensor frame is
-captured). Beacons on firmware **v4/v5** (separated frames) yield the densest collection.
+captured).
+
+**What it never collects**: user location or movement, proximity/distance estimates,
+advertising IDs, or anything about people. Beacon hardware health only.
 
 ## Two integration modes — plug & play
 
@@ -185,12 +195,13 @@ BearoundTelemetrySDK.getInstance(this).configure(businessToken = "your-business-
   signatures — the system wakes the SDK when a beacon is nearby, even with the app
   process dead. An **inexact watchdog alarm** (~15 min) self-heals the scan registration,
   flushes pending uploads and re-arms after reboot. No exact alarms.
-- **Harvest scan — standalone regime only.** Some OEM builds (observed on Moto stock,
+- **Harvest scan (OEM workaround).** Some OEM builds (observed on Moto stock,
   Android 14/15) withhold every PendingIntent delivery that contains an iBeacon signature
   for `neverForLocation` apps. The SDK uses the empty wake-up as an alarm clock and opens
-  a short filtered `ScanCallback` window — a path that still receives pure `0xBEAD`
-  frames. Field-validated on a Moto G35 (Android 15) with production beacons. In
-  companion mode this is automatically off (no denylist applies).
+  a short filtered `ScanCallback` window — a path that still receives the pure `0xBEAD`
+  frames. Field-validated on a Moto G35 (Android 15) with production beacons. Runs only
+  while the merged manifest carries the `neverForLocation` flag (its natural state in
+  both modes); it turns itself off automatically if a third-party conflict strips the flag.
 - Readings are buffered offline and uploaded in batches to the Bearound ingest,
   authenticated by the business token.
 
