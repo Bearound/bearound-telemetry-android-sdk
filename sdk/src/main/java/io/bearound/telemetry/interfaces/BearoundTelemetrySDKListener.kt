@@ -1,0 +1,105 @@
+package io.bearound.telemetry.interfaces
+
+import io.bearound.telemetry.models.Beacon
+import io.bearound.telemetry.models.NotificationContent
+
+/**
+ * Listener interface for SDK events and updates.
+ *
+ * Threading contract: all callbacks are dispatched on the main (UI) thread, so it is safe
+ * to update UI directly from any of them without extra thread hopping. The only exception is
+ * [onProvideNotificationContent], which is invoked synchronously on the SDK's scan thread
+ * because the SDK consumes its return value inline — keep that implementation lightweight and
+ * off the UI toolkit.
+ *
+ * v2.2: Added sync lifecycle and background detection callbacks
+ */
+interface BearoundTelemetrySDKListener {
+    /**
+     * Called when beacons are detected and updated
+     */
+    fun onBeaconsUpdated(beacons: List<Beacon>)
+
+    /**
+     * Called when an error occurs in the SDK
+     */
+    fun onError(error: Exception) {}
+
+    /**
+     * Called when scanning state changes
+     */
+    fun onScanningStateChanged(isScanning: Boolean) {}
+    
+    /**
+     * Called when app state changes between foreground and background
+     * @param isInBackground true if app entered background, false if entered foreground
+     */
+    fun onAppStateChanged(isInBackground: Boolean) {}
+    
+    // region Sync Lifecycle Callbacks (v2.2)
+    
+    /**
+     * Called before starting a sync operation
+     * @param beaconCount Number of beacons to be synced
+     */
+    fun onSyncStarted(beaconCount: Int) {}
+    
+    /**
+     * Called after a sync operation completes
+     * @param beaconCount Number of beacons that were synced
+     * @param success Whether the sync was successful
+     * @param error The error if sync failed, null otherwise
+     */
+    fun onSyncCompleted(beaconCount: Int, success: Boolean, error: Exception?) {}
+    
+    // endregion
+    
+    // region Background Events (v2.2)
+    
+    /**
+     * Called when beacons are detected while app is in background
+     * @param beaconCount Number of beacons detected
+     */
+    fun onBeaconDetectedInBackground(beaconCount: Int) {}
+
+    // endregion
+
+    // region Contextual Notification (v2.4)
+
+    /**
+     * Called when beacons are detected in background with foreground service active.
+     * Return a [NotificationContent] to update the notification with contextual info
+     * (e.g., "You're near [location]"), or null to keep the default text.
+     *
+     * @param beacons Currently detected beacons
+     * @return Custom notification content, or null to keep defaults from [ForegroundScanConfig]
+     */
+    fun onProvideNotificationContent(beacons: List<Beacon>): NotificationContent? = null
+
+    // endregion
+
+    // region Beacon Region (v2.5)
+
+    /**
+     * Called when the first beacon is detected after being out of region (rising edge).
+     * This is the canonical "the user is in a beacon zone" signal on Android — when this
+     * fires, the SDK switches from low-power background filter scan to active duty-cycle
+     * scanning.
+     */
+    fun onEnterBeaconRegion() {}
+
+    /**
+     * Called when the last beacon expires after the timeout window (falling edge). The
+     * SDK is now back to low-power background filter scanning only — active BLE scan is OFF.
+     */
+    fun onExitBeaconRegion() {}
+
+    /**
+     * Called when active scanning state changes. Active = BLE ranging + duty cycle.
+     * Active scanning runs only while inside a beacon region.
+     * @param isActive true when active scanning is running, false when paused
+     */
+    fun onActiveScanStateChanged(isActive: Boolean) {}
+
+    // endregion
+}

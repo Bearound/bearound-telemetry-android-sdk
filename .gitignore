@@ -1,0 +1,66 @@
+# macOS system files
+.DS_Store
+
+# Compiled class file
+*.class
+
+# Log file
+*.log
+
+# BlueJ files
+*.ctxt
+
+# Mobile Tools for Java (J2ME)
+.mtj.tmp/
+
+# Package Files #
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+hs_err_pid*
+replay_pid*
+
+# Kotlin Gradle plugin data, see https://kotlinlang.org/docs/whatsnew20.html#new-directory-for-kotlin-data-in-gradle-projects
+.kotlin/
+
+# files for the dex VM
+*.dex
+
+# Local configuration file (sdk path, etc)
+local.properties
+
+# GPG/PGP keys - NEVER commit these
+*.gpg
+*.pgp
+secring.*
+*.asc
+private-key.*
+
+# Generated files
+bin/
+gen/
+out/
+target/
+build/
+.gradle/
+
+# build application files
+*.apk
+*.ap_
+
+# Intellij project files
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Release AAR files (optional - uncomment to track .aar files)
+# release/*.aar
+
+# Keep the release directory structure
+!release/.gitkeep

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:tools="http://schemas.android.com/tools" xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Bluetooth permissions for Android 11 and below -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+
+    <!-- BEAROUND TELEMETRY — Bluetooth scan WITH neverForLocation and NO location
+         permissions. On Android 12+ scanning works with the "Nearby devices" grant
+         alone: Location toggle off, location denied — telemetry keeps flowing. The
+         assertion is what makes that possible (without it Android silently withholds
+         EVERY scan result unless the app also holds ACCESS_FINE_LOCATION — verified
+         on-device). Accepted trade-offs:
+           - OEM denylists may filter beacon-shaped packets (Moto stock drops records
+             containing the iBeacon signature — the HarvestScanManager works around it
+             by collecting pure-BEAD frames on the callback path, field-validated on a
+             G35/Android 15, 2026-07-22);
+           - scan results must never be used to derive device location (Play assertion).
+         Android ≤ 11: the legacy scan gate is location, which this artifact does not
+         declare — effective collection there requires the HOST app to hold location.
+         MERGE WARNING: if ANY manifest in the merge declares BLUETOOTH_SCAN without
+         this flag, the flag is dropped and telemetry goes blind for users without
+         location. Never combine with the Bearound SDK artifact — the shared
+         io.bearound.sdkguard.BearoundVariantGuard class turns that mistake into a
+         duplicate-class build error. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="s" />
+
+    <!-- NO ACCESS_FINE_LOCATION / ACCESS_COARSE_LOCATION — by design. Hosts carry no
+         "Location" entry in Play Data Safety on account of this SDK. -->
+
+    <!-- Internet for API communication -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Wi-Fi state (normal permission, granted at install, no user prompt) — required by
+         WifiManager for the wifiSSID telemetry field; without it the SSID is always null
+         in host apps that only integrate the SDK. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- Notifications permission (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    
+    <!-- Boot completed permission for restart scanning after reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    
+    <!-- NO USE_EXACT_ALARM / SCHEDULE_EXACT_ALARM: the SDK is not a calendar or
+         alarm-clock app, so it does not qualify for exact alarms on Google Play
+         (the Play Console requires removing them, otherwise it demands the "Exact
+         alarms" declaration). The scan watchdog uses an INEXACT alarm
+         (setAndAllowWhileIdle), which runs in Doze without any special permission —
+         minute-level precision is irrelevant for a WorkManager safety net. -->
+
+    <!-- Foreground service permissions -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
+    <!-- Hardware features. required="false" ON PURPOSE: this manifest merges into the HOST
+         app's, and uses-feature merges with OR (true wins) — required="true" here would make
+         every client app invisible on the Play Store for devices without BLE, even when the
+         app has plenty of non-beacon functionality. The SDK degrades gracefully at runtime
+         (adapter == null → no scanning). -->
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
+    <application>
+        <!-- BroadcastReceiver for PendingIntent-based BLE scan (API 26+) -->
+        <receiver
+            android:name="io.bearound.telemetry.background.BluetoothScanReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="io.bearound.telemetry.ACTION_BLUETOOTH_SCAN" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Watchdog Receiver for AlarmManager + Boot Completed -->
+        <receiver 
+            android:name="io.bearound.telemetry.background.ScanWatchdogReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="io.bearound.telemetry.ACTION_WATCHDOG" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Foreground service to keep process alive for BLE scanning (opt-in) -->
+        <service
+            android:name="io.bearound.telemetry.background.BeaconScanService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+    </application>
+
+</manifest>

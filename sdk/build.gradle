@@ -1,0 +1,110 @@
+// BEAROUND TELEMETRY SDK — anonymous-capable beacon fleet-health telemetry.
+// Derived 1:1 from bearound-android-sdk :sdk (package io.bearound.telemetry).
+// Payload intentionally IDENTICAL to the Bearound SDK for now — trimming to the
+// telemetry-only domain happens after functional validation (decision 2026-07-22).
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'maven-publish'
+}
+
+android {
+    namespace 'io.bearound.telemetry'
+
+    compileSdk = 36
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    defaultConfig {
+        minSdk 23
+        consumerProguardFiles "consumer-rules.pro"
+
+        buildConfigField("String", "SDK_VERSION", "\"${findProperty("SDK_VERSION")}\"")
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+    publishing {
+        singleVariant("release") {
+            withSourcesJar()
+        }
+    }
+}
+
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                groupId = findProperty("SDK_GROUP_ID") as String
+                artifactId = findProperty("SDK_ARTIFACT_ID") as String
+                version = findProperty("SDK_VERSION") as String
+
+                from components.release
+
+                pom {
+                    name.set("Bearound Telemetry SDK")
+                    description.set("Kotlin SDK for Android — Bearound beacon fleet-health telemetry (battery, temperature, movement, firmware) with no location permission.")
+                    url.set("https://github.com/Bearound/bearound-telemetry-android-sdk")
+
+                    licenses {
+                        license {
+                            name.set("MIT License")
+                            url.set("https://opensource.org/licenses/MIT")
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id.set("bearound")
+                            name.set("BeAround Team")
+                            email.set("contact@bearound.com")
+                        }
+                    }
+
+                    scm {
+                        connection.set("scm:git:https://github.com/Bearound/bearound-telemetry-android-sdk.git")
+                        developerConnection.set("scm:git:ssh://git@github.com:Bearound/bearound-telemetry-android-sdk.git")
+                        url.set("https://github.com/Bearound/bearound-telemetry-android-sdk")
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/Bearound/bearound-telemetry-android-sdk")
+                credentials {
+                    username = System.getenv("GPR_USER")
+                    password = System.getenv("GPR_KEY")
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation 'androidx.core:core-ktx:1.16.0'
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
+    implementation 'androidx.lifecycle:lifecycle-process:2.9.1'
+    implementation 'androidx.security:security-crypto:1.1.0-alpha06'
+    implementation 'androidx.work:work-runtime-ktx:2.9.0'
+    implementation 'com.google.code.gson:gson:2.13.2'
+
+    // Firebase Cloud Messaging — soft dependency (compileOnly, not bundled)
+    compileOnly 'com.google.firebase:firebase-messaging:24.0.0'
+    compileOnly 'com.google.firebase:firebase-common:21.0.0'
+}
