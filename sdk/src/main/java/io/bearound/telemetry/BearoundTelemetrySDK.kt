@@ -425,6 +425,64 @@ class BearoundTelemetrySDK private constructor() {
     }
 
     /** Configures and activates the SDK. Auto-collects the FCM token if Firebase is present (see [tryAutoCollectFcmToken]). */
+    /**
+     * Companion one-liner — configure straight from the Bearound tracking SDK instance;
+     * businessToken and deviceId are taken from it (credentials handoff):
+     *
+     * ```
+     * val bearound = BeAroundSDK
+     *     .getInstance(this)
+     *     .configure(businessToken = TOKEN)
+     *
+     * BearoundTelemetrySDK
+     *     .getInstance(this)
+     *     .configure(bearound)
+     * ```
+     *
+     * The parameter is [Any] on purpose: the tracking SDK is not a compile-time
+     * dependency of this artifact (independent plug & play installs), so the handoff
+     * fields are read from the instance's public accessors reflectively. Passing
+     * anything that is not a CONFIGURED BeAroundSDK instance is a safe no-op — the SDK
+     * logs, reports, emits onError and stays inactive (never-crash contract). This
+     * overload becomes statically typed once the tracking SDK's handoff release ships.
+     */
+    fun configure(
+        bearoundSdk: Any,
+        scanPrecision: ScanPrecision = ScanPrecision.MEDIUM,
+        maxQueuedPayloads: MaxQueuedPayloads = MaxQueuedPayloads.MEDIUM,
+        technology: String = "android-telemetry",
+    ): BearoundTelemetrySDK {
+        val cls = bearoundSdk.javaClass
+        val token = runCatching {
+            cls.getMethod("getBusinessToken").invoke(bearoundSdk) as? String
+        }.getOrNull()
+        val handoffDeviceId = runCatching {
+            cls.getMethod("getDeviceId").invoke(bearoundSdk) as? String
+        }.getOrNull()
+
+        if (token.isNullOrBlank()) {
+            Log.e(
+                TAG,
+                "configure(bearoundSdk) expected a CONFIGURED BeAroundSDK instance, got " +
+                    "${cls.name} with no businessToken — configure() skipped, SDK stays " +
+                    "inactive. Configure the tracking SDK FIRST, or call " +
+                    "configure(businessToken = ...) directly."
+            )
+            val error =
+                IllegalArgumentException("configure(bearoundSdk) needs a configured BeAroundSDK")
+            ErrorReporter.report(error, "configure(handoff)")
+            listener?.onError(error)
+            return this
+        }
+        return configure(
+            businessToken = token,
+            scanPrecision = scanPrecision,
+            maxQueuedPayloads = maxQueuedPayloads,
+            technology = technology,
+            deviceId = handoffDeviceId,
+        )
+    }
+
     fun configure(
         businessToken: String,
         scanPrecision: ScanPrecision = ScanPrecision.MEDIUM,

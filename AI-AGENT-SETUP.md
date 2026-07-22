@@ -52,14 +52,17 @@ the following.
    tools:replace="android:usesPermissionFlags" /> — and add xmlns:tools to <manifest>.
 
 5. Configure + start (Quick Start): get the singleton with
-   BearoundTelemetrySDK.getInstance(context), call
-   configure(businessToken = <ASK ME FOR IT — same token as the main Bearound SDK>),
-   then request the runtime permissions with an
-   ActivityResultContracts.RequestMultiplePermissions launcher — BLUETOOTH_SCAN on
-   Android 12+ (S+); in COMPANION mode bundle it into the same launcher as the
-   tracking SDK's location permissions so the user sees one flow — and call
-   startScanning() once granted. In COMPANION mode also initialize the tracking SDK
-   exactly as its own README says; the two configure/start calls are independent.
+   BearoundTelemetrySDK.getInstance(context).
+   - COMPANION mode: configure the TRACKING SDK first (it returns self), then hand
+     the instance over — telemetry extracts the business token and device id from it
+     so both SDKs report as the same device:
+       val bearound = BeAroundSDK.getInstance(this).configure(businessToken = <ASK ME>)
+       BearoundTelemetrySDK.getInstance(this).configure(bearound)
+     Bundle BLUETOOTH_SCAN into the same permission launcher as the tracking SDK's
+     location permissions so the user sees one flow.
+   - STANDALONE mode: configure(businessToken = <ASK ME FOR IT>) and request
+     BLUETOOTH_SCAN on Android 12+ (S+).
+   Then call startScanning() once granted.
 
 6. Validate: build, install on a physical device with a Bearound beacon nearby, and
    check logcat for tags BearoundTelemetrySDK* (scan registration, batch sync) —

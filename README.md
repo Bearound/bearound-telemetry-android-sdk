@@ -160,19 +160,20 @@ telemetry.startScanning()
 opt-in (`enableForegroundScanning`) — see the KDoc.
 
 Companion apps initialize **both** SDKs side by side; they scan and sync independently.
-From the split release of the tracking SDK on, its `configure()` returns the instance
-(self), so telemetry takes the credentials from it — no re-entering; plain fill-in also
-works, both paths are supported:
+The tracking SDK's `configure()` returns the instance (self) — hand it straight to
+telemetry, which extracts the business token **and the device id** from it, so both
+SDKs report as the **same device**; plain fill-in also works, both paths are supported:
 
 ```kotlin
 // tracking first — configure() returns self
-val bearound = BeAroundSDK.getInstance(this)
+val bearound = BeAroundSDK
+    .getInstance(this)
     .configure(businessToken = "your-business-token")
 
-// telemetry takes the credentials from the tracking instance…
-bearound.businessToken?.let {
-    BearoundTelemetrySDK.getInstance(this).configure(businessToken = it)
-}
+// companion one-liner: credentials + deviceId handoff from the instance
+BearoundTelemetrySDK
+    .getInstance(this)
+    .configure(bearound)
 
 // …or fill it in normally (standalone style):
 BearoundTelemetrySDK.getInstance(this).configure(businessToken = "your-business-token")
@@ -196,8 +197,9 @@ BearoundTelemetrySDK.getInstance(this).configure(businessToken = "your-business-
 ## Roadmap
 
 - [ ] Trim the sync payload to the telemetry domain (beacon-side data, anonymous)
-- [ ] Typed `configure(bearoundSdk)` overload — pass the tracking instance itself
-      (`compileOnly` on the tracking SDK); lands once the split releases
+- [x] `configure(bearoundSdk)` overload — pass the tracking instance itself (dynamic
+      handoff today; becomes statically typed via `compileOnly` once the tracking
+      SDK's handoff release ships)
 - [ ] Sample app + CI
 - [ ] Release workflow (tags → JitPack), mirroring the main SDK train
 - [ ] Shared-scan optimization in companion mode (single scan client feeding both SDKs)
