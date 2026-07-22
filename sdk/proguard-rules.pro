@@ -20,18 +20,22 @@
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
 
--keep public class io.bearound.sdk.** {
+-keep public class io.bearound.telemetry.** {
     public *;
 }
 
--keepclassmembers class io.bearound.sdk.** {
+-keepclassmembers class io.bearound.telemetry.** {
     public *;
 }
 
--keep public interface io.bearound.sdk.** {
+-keep public interface io.bearound.telemetry.** {
     public *;
 }
 
 # firebase-messaging is compileOnly (optional) — ignore its absent classes in R8
 -dontwarn com.google.firebase.**
 -dontwarn com.google.android.gms.**
+# Repackage obfuscated internals into a namespace unique to THIS SDK — the
+# companion Bearound SDK ships in the same app, and two R8-minified AARs both
+# renaming internals to root-package short names (a.a, d.b) collide at build time.
+-repackageclasses 'io.bearound.telemetry.internal'
