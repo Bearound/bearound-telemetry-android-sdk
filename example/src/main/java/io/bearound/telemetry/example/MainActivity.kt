@@ -55,7 +55,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.bearound.telemetry.BearoundTelemetrySDK
@@ -99,7 +98,6 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
                     nearbyGranted = nearbyGranted.value,
                     btOn = btOn.value,
                     collecting = collecting.value,
-                    deviceId = sdk.deviceId,
                     syncOk = syncOk.intValue,
                     syncFail = syncFail.intValue,
                     beacons = beaconsState.values.sortedBy { it.minor },
@@ -168,7 +166,6 @@ private fun TelemetryScreen(
     nearbyGranted: Boolean,
     btOn: Boolean,
     collecting: Boolean,
-    deviceId: String,
     syncOk: Int,
     syncFail: Int,
     beacons: List<Beacon>,
@@ -200,7 +197,7 @@ private fun TelemetryScreen(
         ) {
             item { AboutBanner() }
             item { EnvironmentCard(nearbyGranted, btOn, onRequestPermission) }
-            item { CollectionCard(collecting, deviceId, syncOk, syncFail, nearbyGranted, btOn, onStart, onStop) }
+            item { CollectionCard(collecting, syncOk, syncFail, nearbyGranted, btOn, onStart, onStop) }
             item {
                 Text(
                     "Telemetria dos beacons (${beacons.size})",
@@ -321,7 +318,6 @@ private fun StatusRow(
 @Composable
 private fun CollectionCard(
     collecting: Boolean,
-    deviceId: String,
     syncOk: Int,
     syncFail: Int,
     nearbyGranted: Boolean,
@@ -341,11 +337,6 @@ private fun CollectionCard(
                     color = if (collecting) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-            Column {
-                Text("Device ID", style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(deviceId, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
             }
             Text(
                 "Sincronizações: $syncOk ok · $syncFail falhas",
