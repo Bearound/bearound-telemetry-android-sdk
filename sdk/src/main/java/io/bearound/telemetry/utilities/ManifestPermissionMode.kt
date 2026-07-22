@@ -8,19 +8,18 @@ import android.os.Build
 
 /**
  * Detects, at runtime, which BLUETOOTH_SCAN regime the HOST app's MERGED manifest
- * ended up with. This is the mechanism behind plug & play with the Bearound SDK:
+ * ended up with.
  *
- * - **Standalone** (only this SDK in the app): the `neverForLocation` flag this SDK
- *   declares survives the merge → Bluetooth-only regime. Scanning works with location
- *   denied and the Location toggle off; some OEM builds withhold PendingIntent
- *   deliveries for beacon-shaped packets (denylist) → HarvestScanManager compensates.
+ * In BOTH supported modes (standalone, and companion alongside the Bearound SDK — which
+ * also declares the flag) `neverForLocation` is expected to SURVIVE the merge: telemetry
+ * then works with location denied/off, and HarvestScanManager compensates OEM denylists.
  *
- * - **Companion** (the app also ships the Bearound SDK, which declares BLUETOOTH_SCAN
- *   WITHOUT the flag): the manifest merge drops the flag → the whole app runs in the
- *   location-capable regime. No denylist applies and PendingIntent deliveries are
- *   complete, so the harvest workaround is unnecessary; scan results only flow while
- *   fine location is granted and Location is on — the tracking SDK's own permission
- *   UX drives the user through that.
+ * The flag being ABSENT means a third-party library declared BLUETOOTH_SCAN without it
+ * and the merge dropped it — the app then runs location-capable: no denylist applies
+ * (harvest correctly stays off) but Android withholds every scan result unless fine
+ * location is granted, so telemetry goes blind for users without location. That state
+ * is a misintegration to surface, not a mode to embrace — hosts fix it with
+ * tools:replace (see README §Permissions).
  *
  * Nothing to configure: the SDK adapts by reading the merged manifest.
  */

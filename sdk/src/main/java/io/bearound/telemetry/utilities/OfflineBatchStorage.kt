@@ -35,7 +35,7 @@ class OfflineBatchStorage(private val context: Context) {
         private const val MAX_BATCH_AGE_MS = 7L * 24 * 60 * 60 * 1000
         
         /** Directory name for batch storage */
-        private const val DIRECTORY_NAME = "com.bearound.sdk.batches"
+        private const val DIRECTORY_NAME = "com.bearound.telemetry.batches"
     }
     
     // region Codable Types for JSON Serialization

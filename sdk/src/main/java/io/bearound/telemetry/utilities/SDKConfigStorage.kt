@@ -11,7 +11,7 @@ import io.bearound.telemetry.models.ScanPrecision
  * Persists SDK configuration to survive app restarts
  */
 object SDKConfigStorage {
-    private const val PREFS_NAME = "bearound_sdk_config"
+    private const val PREFS_NAME = "bearound_telemetry_config"
     private const val KEY_BUSINESS_TOKEN = "business_token"
     private const val KEY_SCAN_PRECISION = "scan_precision"
     private const val KEY_MAX_QUEUED_PAYLOADS = "max_queued_payloads"

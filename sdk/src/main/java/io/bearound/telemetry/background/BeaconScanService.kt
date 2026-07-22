@@ -25,8 +25,8 @@ class BeaconScanService : Service() {
 
     companion object {
         private const val TAG = "BearoundTelemetrySDK-FgService"
-        private const val DEFAULT_CHANNEL_ID = "bearound_scan_service"
-        private const val NOTIFICATION_ID = 19850
+        private const val DEFAULT_CHANNEL_ID = "bearound_telemetry_scan_service"
+        private const val NOTIFICATION_ID = 19851
 
         @Volatile
         var isRunning: Boolean = false

@@ -24,7 +24,7 @@ class BeaconSyncWorker(
     
     companion object {
         private const val TAG = "BearoundTelemetrySDK-SyncWorker"
-        const val WORK_NAME = "beacon_sync_work"
+        const val WORK_NAME = "bearound_telemetry_sync_work"
     }
     
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {

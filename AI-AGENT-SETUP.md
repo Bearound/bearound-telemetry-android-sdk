@@ -13,11 +13,13 @@ the following.
 
 1. Detect the integration MODE first: search the app's dependencies for
    com.github.Bearound:bearound-android-sdk (the Bearound tracking SDK).
-   - If present → COMPANION mode: the two SDKs are plug & play; the manifest merge
-     intentionally drops neverForLocation and the telemetry SDK adapts at runtime.
-     Do NOT add any tools:replace for BLUETOOTH_SCAN.
-   - If absent → STANDALONE mode: telemetry must keep the neverForLocation flag in
-     the merged manifest (step 4 audits it).
+   - If present → COMPANION mode: the two SDKs are plug & play — both declare
+     BLUETOOTH_SCAN WITH neverForLocation, so the merge is clean and the flag is
+     preserved. Users who grant location get tracking + telemetry; users who deny
+     it still produce telemetry.
+   - If absent → STANDALONE mode: telemetry-only integration.
+   In BOTH modes the neverForLocation flag must survive the merged manifest
+   (step 4 audits it).
 
 2. Install: add the JitPack repository — maven("https://jitpack.io") under
    dependencyResolutionManagement in settings.gradle(.kts) (or allprojects in a
@@ -38,15 +40,16 @@ the following.
    SDK — running without location is its purpose. In COMPANION mode the location
    permissions come from the tracking SDK and that is expected.
 
-4. STANDALONE mode only — audit the merged manifest: run
+4. BOTH modes — audit the merged manifest: run
    ./gradlew :app:processDebugMainManifest and inspect
    app/build/intermediates/merged_manifests/debug/.../AndroidManifest.xml. CONFIRM
-   BLUETOOTH_SCAN still carries usesPermissionFlags="neverForLocation". If any other
-   library dropped it, re-declare in the app manifest forcing the flag to win:
+   BLUETOOTH_SCAN still carries usesPermissionFlags="neverForLocation" (the Bearound
+   tracking SDK also declares it, so in companion mode the merge stays clean). If any
+   OTHER third-party library dropped it, re-declare in the app manifest forcing the
+   flag to win:
    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
    android:usesPermissionFlags="neverForLocation"
    tools:replace="android:usesPermissionFlags" /> — and add xmlns:tools to <manifest>.
-   In COMPANION mode SKIP this step: the flag being dropped is intentional.
 
 5. Configure + start (Quick Start): get the singleton with
    BearoundTelemetrySDK.getInstance(context), call

@@ -14,7 +14,7 @@ import android.os.Build
  */
 object RegisterStore {
 
-    private const val PREFS_NAME = "bearound_sdk_register"
+    private const val PREFS_NAME = "bearound_telemetry_register"
     private const val KEY_LAST_REGISTER_AT = "last_register_at"
     private const val KEY_LAST_FINGERPRINT = "last_fingerprint"
 

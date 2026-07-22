@@ -45,14 +45,20 @@ by reading the merged manifest — nothing to configure:
 | | **Companion** (recommended) | **Standalone** |
 |---|---|---|
 | When | Your app also ships the [Bearound SDK](https://github.com/Bearound/bearound-android-sdk) (tracking) | Location is off-limits for your app |
-| Manifest merge | The tracking SDK declares `BLUETOOTH_SCAN` *without* the flag → the merge drops it — **intentional** | The flag survives → Bluetooth-only regime |
-| Resulting regime | Location-capable: full scan deliveries, no OEM denylist | Works with location **denied** and Location toggle **off** (Android 12+) |
-| Telemetry flows when | Location granted + on (the tracking SDK's permission UX drives this) | "Nearby devices" granted — that's all |
-| Extra machinery | Harvest scan auto-disabled (not needed) | Harvest scan compensates OEM denylists |
+| Manifest merge | **Both SDKs declare `BLUETOOTH_SCAN` with `neverForLocation`** → clean merge, flag preserved | The flag survives → Bluetooth-only regime |
+| Resulting regime | Tracking detects while location is granted + on; **telemetry keeps working even when the user denies location** — the reason this pairing exists | Works with location **denied** and Location toggle **off** (Android 12+) |
+| Telemetry flows when | "Nearby devices" granted — location state irrelevant | "Nearby devices" granted — that's all |
+| Extra machinery | Harvest scan active where OEM denylists bite (Moto stock, realme) | Harvest scan compensates OEM denylists |
 
 Tracking and telemetry stay **separate products with separate pipelines** — the tracking
 SDK owns the person/positioning domain, this SDK owns the beacon-health domain. Running
-both in one app is the intended "full Bearound" setup.
+both in one app is the intended "full Bearound" setup: users who grant location get
+tracking + telemetry; users who deny it still contribute fleet health.
+
+The two SDKs are engineered to coexist in one app without stepping on each other:
+independent broadcast actions, WorkManager unique names, SharedPreferences namespaces,
+notification channels/ids and offline batch directories (`bearound_telemetry_*` /
+`com.bearound.telemetry.*`).
 
 ## Requirements
 
@@ -106,7 +112,7 @@ directly.
 
 | Merged into your app | Purpose |
 |---|---|
-| `BLUETOOTH_SCAN` (`neverForLocation`) | BLE scanning on Android 12+ — flag may be dropped by design in [companion mode](#two-integration-modes--plug--play) |
+| `BLUETOOTH_SCAN` (`neverForLocation`) | BLE scanning on Android 12+ — the flag must survive the merge in [both modes](#two-integration-modes--plug--play) |
 | `BLUETOOTH` / `BLUETOOTH_ADMIN` (≤ API 30) | Legacy BLE scanning |
 | `INTERNET` / `ACCESS_NETWORK_STATE` | Telemetry upload |
 | `ACCESS_WIFI_STATE` | Wi-Fi SSID telemetry field |
@@ -126,9 +132,10 @@ if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
 }
 ```
 
-**Standalone integrations only**: if some *other* third-party library declares
-`BLUETOOTH_SCAN` without `neverForLocation`, the merge drops the flag and telemetry goes
-blind for users without location. Re-declare it in your app manifest, forcing it to win:
+**Both modes**: if some *other* third-party library declares `BLUETOOTH_SCAN` without
+`neverForLocation`, the merge drops the flag and telemetry goes blind for users without
+location (the SDK detects this at runtime and logs it). Re-declare it in your app
+manifest, forcing it to win:
 
 ```xml
 <uses-permission android:name="android.permission.BLUETOOTH_SCAN"

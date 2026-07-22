@@ -21,11 +21,15 @@
            - scan results must never be used to derive device location (Play
              assertion) — this SDK's domain is beacon health, not positioning.
 
-         COMPANION (the app also ships the Bearound SDK, which declares
-         BLUETOOTH_SCAN WITHOUT the flag): the merge drops the flag — INTENTIONAL
-         here. The whole app runs location-capable: no denylist, full PendingIntent
-         deliveries, harvest disabled automatically; results flow while location is
-         granted+on, driven by the tracking SDK's own permission UX.
+         COMPANION (the app also ships the Bearound SDK): both SDKs declare
+         BLUETOOTH_SCAN WITH this flag → clean merge, flag preserved. Tracking
+         detects while location is granted+on (its recommended hybrid setup);
+         telemetry keeps flowing even when the user DENIES location — the reason
+         this pairing exists. Harvest stays active where OEM denylists bite.
+         If a THIRD-PARTY library declares BLUETOOTH_SCAN without the flag, the
+         merge drops it and telemetry goes blind for users without location — the
+         SDK detects that at runtime (ManifestPermissionMode) and logs it; hosts fix
+         it with tools:replace (see README §Permissions).
 
          Android ≤ 11: the legacy scan gate is location — standalone collection
          effectively starts at Android 12; in companion mode the tracking SDK's

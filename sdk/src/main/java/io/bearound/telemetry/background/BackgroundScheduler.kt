@@ -95,7 +95,7 @@ class BackgroundScheduler private constructor(private val context: Context) {
             WORK_FLEX_MINUTES, TimeUnit.MINUTES
         )
             .setConstraints(constraints)
-            .addTag("bearound_sync")
+            .addTag("bearound_telemetry_sync")
             .build()
         
         workManager.enqueueUniquePeriodicWork(

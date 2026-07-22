@@ -74,7 +74,7 @@ class BeaconManager(private val context: Context) {
          * well above any plausible Doze + App Standby cycle. Matches iOS.
          */
         private const val ZONE_STATE_MAX_AGE_MS = 3_600_000L
-        private const val PREFS_NAME = "com.bearound.sdk.config"
+        private const val PREFS_NAME = "com.bearound.telemetry.config"
         private const val PREF_KEY_ZONE_IN = "ble_zone_state_v1.inZone"
         private const val PREF_KEY_ZONE_WRITTEN_AT = "ble_zone_state_v1.writtenAt"
         private const val PREF_KEY_ZONE_LAST_SEEN = "ble_zone_state_v1.lastSeenAt"
