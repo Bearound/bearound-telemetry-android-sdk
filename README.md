@@ -152,11 +152,23 @@ telemetry.startScanning()
 `reliabilityStatus()`, `diagnostics()`, battery-optimization helpers, foreground-service
 opt-in (`enableForegroundScanning`) — see the KDoc.
 
-Companion apps initialize **both** SDKs side by side; they scan and sync independently:
+Companion apps initialize **both** SDKs side by side; they scan and sync independently.
+From the split release of the tracking SDK on, its `configure()` returns the instance
+(self), so telemetry takes the credentials from it — no re-entering; plain fill-in also
+works, both paths are supported:
 
 ```kotlin
-BeAroundSDK.getInstance(this).configure(businessToken = TOKEN)          // tracking
-BearoundTelemetrySDK.getInstance(this).configure(businessToken = TOKEN) // fleet health
+// tracking first — configure() returns self
+val bearound = BeAroundSDK.getInstance(this)
+    .configure(businessToken = "your-business-token")
+
+// telemetry takes the credentials from the tracking instance…
+bearound.businessToken?.let {
+    BearoundTelemetrySDK.getInstance(this).configure(businessToken = it)
+}
+
+// …or fill it in normally (standalone style):
+BearoundTelemetrySDK.getInstance(this).configure(businessToken = "your-business-token")
 ```
 
 ## Background collection
@@ -177,6 +189,8 @@ BearoundTelemetrySDK.getInstance(this).configure(businessToken = TOKEN) // fleet
 ## Roadmap
 
 - [ ] Trim the sync payload to the telemetry domain (beacon-side data, anonymous)
+- [ ] Typed `configure(bearoundSdk)` overload — pass the tracking instance itself
+      (`compileOnly` on the tracking SDK); lands once the split releases
 - [ ] Sample app + CI
 - [ ] Release workflow (tags → JitPack), mirroring the main SDK train
 - [ ] Shared-scan optimization in companion mode (single scan client feeding both SDKs)
