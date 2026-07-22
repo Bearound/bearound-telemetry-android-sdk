@@ -429,8 +429,12 @@ class BearoundTelemetrySDK private constructor() {
         businessToken: String,
         scanPrecision: ScanPrecision = ScanPrecision.MEDIUM,
         maxQueuedPayloads: MaxQueuedPayloads = MaxQueuedPayloads.MEDIUM,
-        technology: String = "android-native"
-    ) {
+        technology: String = "android-telemetry",
+        deviceId: String? = null,
+    ): BearoundTelemetrySDK {
+        // Companion handoff FIRST: adopt the tracking SDK's device id before anything
+        // (register, error telemetry) reads or generates our own.
+        deviceId?.let { DeviceIdentifier.setExternalDeviceId(it) }
         // NEVER-CRASH-THE-HOST: an embedded SDK must not throw from a public entry
         // point — a host wired to an empty BuildConfig field would crash on startup.
         // Fail silently-but-visibly instead: log, report to telemetry, surface via
@@ -440,7 +444,7 @@ class BearoundTelemetrySDK private constructor() {
             val error = IllegalArgumentException("Business token cannot be empty")
             ErrorReporter.report(error, "configure")
             listener?.onError(error)
-            return
+            return this
         }
 
         val appId = context.packageName
@@ -491,7 +495,16 @@ class BearoundTelemetrySDK private constructor() {
         if (isScanning) {
             startSyncTimer()
         }
+        return this
     }
+
+    /**
+     * Effective device id of this SDK — the tracking SDK's id when handed over via
+     * [configure] (companion), otherwise self-generated. Exposed so hosts can verify
+     * both SDKs report as the same device.
+     */
+    val deviceId: String
+        get() = DeviceIdentifier.getDeviceId(context)
 
     /**
      * Bluetooth off→on drops every scan client in the stack while the SDK's local flags stay

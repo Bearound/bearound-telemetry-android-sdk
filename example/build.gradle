@@ -1,0 +1,49 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// Read BUSINESS_TOKEN from local.properties (gitignored) or env var — never commit it.
+def localProps = new Properties()
+def localPropsFile = rootProject.file('local.properties')
+if (localPropsFile.exists()) {
+    localPropsFile.withInputStream { localProps.load(it) }
+}
+def businessToken = localProps.getProperty("BUSINESS_TOKEN", System.getenv("BUSINESS_TOKEN") ?: "")
+
+android {
+    namespace 'io.bearound.telemetry.example'
+
+    compileSdk = 36
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    defaultConfig {
+        applicationId "io.bearound.telemetry.example"
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName "0.1.0"
+
+        buildConfigField "String", "BUSINESS_TOKEN", "\"${businessToken}\""
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+}
+
+dependencies {
+    implementation project(':sdk')
+}

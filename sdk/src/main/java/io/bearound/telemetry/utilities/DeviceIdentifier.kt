@@ -47,6 +47,20 @@ object DeviceIdentifier {
         return deviceId
     }
 
+    /**
+     * Companion handoff: adopt the device id PRODUCED BY THE BEAROUND TRACKING SDK so
+     * both SDKs in the same app report as one device. Overwrites any previously
+     * generated id and freezes the new one. No-op on blank input.
+     */
+    fun setExternalDeviceId(id: String) {
+        if (id.isBlank()) return
+        if (SecureStorage.retrieve(STORAGE_KEY) != id) {
+            SecureStorage.save(STORAGE_KEY, id)
+            Log.d(TAG, "Adopted external device ID (companion handoff)")
+        }
+        cachedDeviceId = id
+    }
+
     private fun isValidAndroidId(androidId: String?): Boolean {
         return !androidId.isNullOrBlank() &&
             androidId != INVALID_ANDROID_ID &&

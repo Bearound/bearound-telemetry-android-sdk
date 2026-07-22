@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- No permission declarations: everything merges in from the SDK manifest.
+         This app doubles as the standalone merge test — the final APK must carry
+         BLUETOOTH_SCAN WITH neverForLocation and NO location permission. -->
+
+    <application
+        android:label="Bearound Telemetry Example"
+        android:theme="@android:style/Theme.Material.Light">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
