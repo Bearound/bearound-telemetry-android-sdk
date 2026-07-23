@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ListAlt
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Cancel
@@ -40,6 +43,8 @@ import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -58,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.bearound.telemetry.BearoundTelemetrySDK
+import io.bearound.telemetry.example.ui.DetectionLogScreen
 import io.bearound.telemetry.example.ui.theme.BearoundTelemetryTheme
 import io.bearound.telemetry.interfaces.BearoundTelemetrySDKListener
 import io.bearound.telemetry.models.Beacon
@@ -81,6 +87,18 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
     private val nearbyGranted = mutableStateOf(false)
     private val btOn = mutableStateOf(false)
 
+    // Detection log (mirrors BearoundScan): one entry per FRESH advertisement.
+    // onBeaconsUpdated re-emits the whole current list, so entries are only logged
+    // when a beacon's timestamp advanced — the counts reflect real observations.
+    private val foregroundLog = mutableStateOf<List<DetectionLogEntry>>(emptyList())
+    private val backgroundLog = mutableStateOf<List<DetectionLogEntry>>(emptyList())
+    private val lastLoggedTs = HashMap<String, Long>()
+    private var isInBackground = false
+    private val maxLogEntries = 500
+
+    // Pinned beacons stay at the top of the list (tap a card to toggle).
+    private val pinnedIds = mutableStateOf<Set<String>>(emptySet())
+
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             refreshEnvironment()
@@ -102,17 +120,36 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
 
         setContent {
             BearoundTelemetryTheme {
-                TelemetryScreen(
-                    nearbyGranted = nearbyGranted.value,
-                    btOn = btOn.value,
-                    collecting = collecting.value,
-                    syncOk = syncOk.intValue,
-                    syncFail = syncFail.intValue,
-                    beacons = beaconsState.values.sortedBy { it.minor },
-                    onRequestPermission = ::requestNearby,
-                    onStart = ::startCollection,
-                    onStop = ::stopCollection,
-                )
+                val pinned = pinnedIds.value
+                MainScaffold(
+                    foregroundLog = foregroundLog.value,
+                    backgroundLog = backgroundLog.value,
+                    onClearLog = {
+                        foregroundLog.value = emptyList()
+                        backgroundLog.value = emptyList()
+                    },
+                ) { padding ->
+                    TelemetryScreen(
+                        nearbyGranted = nearbyGranted.value,
+                        btOn = btOn.value,
+                        collecting = collecting.value,
+                        syncOk = syncOk.intValue,
+                        syncFail = syncFail.intValue,
+                        beacons = beaconsState.values.sortedWith(
+                            compareBy<Beacon> { if (pinned.contains("${it.major}/${it.minor}")) 0 else 1 }
+                                .thenBy { it.minor }
+                        ),
+                        pinnedIds = pinned,
+                        onTogglePin = { key ->
+                            pinnedIds.value =
+                                if (pinned.contains(key)) pinned - key else pinned + key
+                        },
+                        onRequestPermission = ::requestNearby,
+                        onStart = ::startCollection,
+                        onStop = ::stopCollection,
+                        padding = padding,
+                    )
+                }
             }
         }
     }
@@ -120,6 +157,16 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
     override fun onResume() {
         super.onResume()
         refreshEnvironment()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        isInBackground = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isInBackground = true
     }
 
     private fun refreshEnvironment() {
@@ -156,7 +203,23 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
 
     override fun onBeaconsUpdated(beacons: List<Beacon>) {
         runOnUiThread {
-            for (b in beacons) beaconsState["${b.major}/${b.minor}"] = b
+            val fresh = mutableListOf<DetectionLogEntry>()
+            for (b in beacons) {
+                val key = "${b.major}/${b.minor}"
+                beaconsState[key] = b
+                val ts = b.timestamp.time
+                if (lastLoggedTs[key] != ts) {
+                    lastLoggedTs[key] = ts
+                    fresh += DetectionLogEntry.from(b, isInBackground)
+                }
+            }
+            if (fresh.isNotEmpty()) {
+                if (isInBackground) {
+                    backgroundLog.value = (fresh + backgroundLog.value).take(maxLogEntries)
+                } else {
+                    foregroundLog.value = (fresh + foregroundLog.value).take(maxLogEntries)
+                }
+            }
         }
     }
 
@@ -169,6 +232,51 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
 // UI
 // =============================================================================
 
+private enum class MainTab(val label: String) { BEACONS("Beacons"), LOG("Log") }
+
+@Composable
+private fun MainScaffold(
+    foregroundLog: List<DetectionLogEntry>,
+    backgroundLog: List<DetectionLogEntry>,
+    onClearLog: () -> Unit,
+    beaconsContent: @Composable (androidx.compose.foundation.layout.PaddingValues) -> Unit,
+) {
+    var tab by remember { mutableStateOf(MainTab.BEACONS) }
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text("Bearound Telemetry", fontWeight = FontWeight.Bold) }
+            )
+        },
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    selected = tab == MainTab.BEACONS,
+                    onClick = { tab = MainTab.BEACONS },
+                    icon = { Icon(Icons.Filled.Sensors, contentDescription = null) },
+                    label = { Text(MainTab.BEACONS.label) },
+                )
+                NavigationBarItem(
+                    selected = tab == MainTab.LOG,
+                    onClick = { tab = MainTab.LOG },
+                    icon = { Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = null) },
+                    label = { Text(MainTab.LOG.label) },
+                )
+            }
+        },
+    ) { padding ->
+        when (tab) {
+            MainTab.BEACONS -> beaconsContent(padding)
+            MainTab.LOG -> DetectionLogScreen(
+                foregroundLog = foregroundLog,
+                backgroundLog = backgroundLog,
+                onClear = onClearLog,
+                paddingValues = padding,
+            )
+        }
+    }
+}
+
 @Composable
 private fun TelemetryScreen(
     nearbyGranted: Boolean,
@@ -177,9 +285,12 @@ private fun TelemetryScreen(
     syncOk: Int,
     syncFail: Int,
     beacons: List<Beacon>,
+    pinnedIds: Set<String>,
+    onTogglePin: (String) -> Unit,
     onRequestPermission: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
+    padding: androidx.compose.foundation.layout.PaddingValues,
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
@@ -189,39 +300,37 @@ private fun TelemetryScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Bearound Telemetry", fontWeight = FontWeight.Bold) }
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { AboutBanner() }
+        item { EnvironmentCard(nearbyGranted, btOn, onRequestPermission) }
+        item { CollectionCard(collecting, syncOk, syncFail, nearbyGranted, btOn, onStart, onStop) }
+        item {
+            Text(
+                "Telemetria dos beacons (${beacons.size})",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 4.dp),
             )
         }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item { AboutBanner() }
-            item { EnvironmentCard(nearbyGranted, btOn, onRequestPermission) }
-            item { CollectionCard(collecting, syncOk, syncFail, nearbyGranted, btOn, onStart, onStop) }
-            item {
-                Text(
-                    "Telemetria dos beacons (${beacons.size})",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-            if (beacons.isEmpty()) {
-                item { EmptyState(collecting) }
-            }
-            items(beacons, key = { "${it.major}/${it.minor}" }) { beacon ->
-                BeaconTelemetryCard(beacon, now)
-            }
-            item { Spacer(Modifier.height(16.dp)) }
+        if (beacons.isEmpty()) {
+            item { EmptyState(collecting) }
         }
+        items(beacons, key = { "${it.major}/${it.minor}" }) { beacon ->
+            val key = "${beacon.major}/${beacon.minor}"
+            BeaconTelemetryCard(
+                beacon = beacon,
+                now = now,
+                isPinned = pinnedIds.contains(key),
+                onTogglePin = { onTogglePin(key) },
+            )
+        }
+        item { Spacer(Modifier.height(16.dp)) }
     }
 }
 
@@ -396,10 +505,15 @@ private fun EmptyState(collecting: Boolean) {
 }
 
 @Composable
-private fun BeaconTelemetryCard(beacon: Beacon, now: Long) {
+private fun BeaconTelemetryCard(
+    beacon: Beacon,
+    now: Long,
+    isPinned: Boolean = false,
+    onTogglePin: () -> Unit = {},
+) {
     val meta = beacon.metadata
     val age = ((now - beacon.timestamp.time) / 1000).coerceAtLeast(0)
-    Card {
+    Card(modifier = Modifier.clickable { onTogglePin() }) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -412,8 +526,17 @@ private fun BeaconTelemetryCard(beacon: Beacon, now: Long) {
                     "Beacon ${beacon.major}.${beacon.minor}",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
                 )
+                if (isPinned) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Filled.PushPin,
+                        contentDescription = "Fixado",
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                Spacer(Modifier.weight(1f))
                 Text(
                     "há ${age}s",
                     style = MaterialTheme.typography.bodySmall,
