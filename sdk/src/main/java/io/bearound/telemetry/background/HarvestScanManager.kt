@@ -43,9 +43,12 @@ internal object HarvestScanManager {
      *  observed on Moto for v3 beacons) — the window must not miss them. */
     private const val HARVEST_WINDOW_MS = 30_000L
 
-    /** POC pacing. Production note: align with the backend sync cadence — readings
-     *  from the same beacon are redundant at sub-minute intervals anyway. */
-    private const val HARVEST_MIN_INTERVAL_MS = 60_000L
+    /** Production pacing: one window per 5 min. Aligned with the backend sync
+     *  cadence — readings from the same beacon are redundant at shorter intervals,
+     *  and on denylist OEMs the wake-ups fire every ~5 s, so a shorter limit would
+     *  keep a LOW_LATENCY scan running almost continuously (battery). Worst-case
+     *  duty with a beacon permanently nearby: 30 s of scan per 5 min (~10%). */
+    private const val HARVEST_MIN_INTERVAL_MS = 300_000L
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var callback: ScanCallback? = null
