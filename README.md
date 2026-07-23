@@ -96,7 +96,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle — dependencies
 dependencies {
-    implementation 'com.github.Bearound:bearound-telemetry-android-sdk:v0.1.0'
+    implementation 'com.github.Bearound:bearound-telemetry-android-sdk:v0.1.1'
 }
 ```
 
