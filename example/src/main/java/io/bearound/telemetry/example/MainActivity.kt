@@ -60,6 +60,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import io.bearound.telemetry.BearoundTelemetrySDK
@@ -203,6 +204,11 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
 
     override fun onBeaconsUpdated(beacons: List<Beacon>) {
         runOnUiThread {
+            // MIRROR the SDK's list, don't just upsert: the SDK emits the current
+            // set with expired beacons already removed (including an empty list) —
+            // keeping stale keys here showed "ghost" beacons that were long gone.
+            val currentKeys = beacons.mapTo(HashSet()) { "${it.major}/${it.minor}" }
+            beaconsState.keys.retainAll(currentKeys)
             val fresh = mutableListOf<DetectionLogEntry>()
             for (b in beacons) {
                 val key = "${b.major}/${b.minor}"
@@ -513,7 +519,13 @@ private fun BeaconTelemetryCard(
 ) {
     val meta = beacon.metadata
     val age = ((now - beacon.timestamp.time) / 1000).coerceAtLeast(0)
-    Card(modifier = Modifier.clickable { onTogglePin() }) {
+    // Stale = no packet past the SDK's stale threshold: fade the card as a short
+    // "leaving" hint before the SDK evicts it from the list.
+    Card(
+        modifier = Modifier
+            .clickable { onTogglePin() }
+            .alpha(if (beacon.isStale) 0.45f else 1f)
+    ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
