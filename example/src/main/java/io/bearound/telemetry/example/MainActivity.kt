@@ -92,6 +92,14 @@ class MainActivity : ComponentActivity(), BearoundTelemetrySDKListener {
         sdk.listener = this
         refreshEnvironment()
 
+        // Field diagnostic (adb shell am start ... -e diag 1 | -e diag sdk). Takes over
+        // the SDK listener for its run — dev tool only, not part of the product UI.
+        when (intent?.getStringExtra("diag")) {
+            null -> Unit
+            "sdk" -> DiagnosticScanner(applicationContext).runSdkOnly()
+            else -> DiagnosticScanner(applicationContext).run()
+        }
+
         setContent {
             BearoundTelemetryTheme {
                 TelemetryScreen(

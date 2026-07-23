@@ -146,7 +146,6 @@ class BearoundTelemetrySDK private constructor() {
     }
 
     private var syncRunnable: Runnable? = null
-    private var dutyCycleRunnable: Runnable? = null
     private var scanRefreshRunnable: Runnable? = null
 
     private var isSyncing = false
@@ -443,8 +442,10 @@ class BearoundTelemetrySDK private constructor() {
      * dependency of this artifact (independent plug & play installs), so the handoff
      * fields are read from the instance's public accessors reflectively. Passing
      * anything that is not a CONFIGURED BeAroundSDK instance is a safe no-op — the SDK
-     * logs, reports, emits onError and stays inactive (never-crash contract). This
-     * overload becomes statically typed once the tracking SDK's handoff release ships.
+     * logs, reports, emits onError and stays inactive (never-crash contract). The
+     * handoff is dynamic BY DESIGN (no compile-time dependency on the tracking SDK) —
+     * it is what lets the Flutter/React Native wrappers hand off reflectively with no
+     * version coupling between the two SDKs.
      */
     fun configure(
         bearoundSdk: Any,
@@ -1071,9 +1072,25 @@ class BearoundTelemetrySDK private constructor() {
 
         stopSyncTimer()
 
-        // Adaptive beacon timeout: cover scan + pause + 5s buffer so beacons don't expire mid-duty-cycle
-        val beaconTimeout = config.precisionScanDuration + config.precisionPauseDuration + 5_000L
-        beaconManager.setBeaconTimeout(beaconTimeout)
+        // Beacon eviction timeout for the CONTINUOUS scan modes: a present beacon
+        // delivers every ~1-2 s in foreground (LOW_LATENCY) and every ~5 s window in
+        // background (BALANCED/LOW_POWER), so 15 s ≈ 3+ missed windows before eviction —
+        // the list stays honest without flickering. LOW gets extra margin for its ~10%
+        // duty. (The old formula covered the manual scan+pause duty cycle, which no
+        // longer exists.)
+        val baseTimeout = when (config.scanPrecision) {
+            ScanPrecision.HIGH, ScanPrecision.MEDIUM -> 15_000L
+            ScanPrecision.LOW -> 25_000L
+        }
+        // Weak-receiver compensation (Unisoc/Spreadtrum class): the controller captures
+        // a fraction of the air, so useful frames arrive 10-45 s apart even at 25 cm —
+        // double the retention windows so the host list holds steady instead of
+        // flickering (bench: Moto G35 T760, realme C61 T612).
+        val weakRx = io.bearound.telemetry.utilities.WeakReceiverProfile.isWeakReceiver
+        val beaconTimeout = if (weakRx) baseTimeout * 2 else baseTimeout
+        val staleMs = if (weakRx) 20_000L else 10_000L
+        if (weakRx) Log.i(TAG, "Weak-receiver SoC detected (${android.os.Build.HARDWARE}) — retention windows doubled")
+        beaconManager.setBeaconTimeout(beaconTimeout, staleMs)
         // Listener emissions of collectedBeacons expire on the same clock as the manager
         // (setBeaconTimeout clamps to its 30s floor — mirror that so the two lists agree).
         listenerBeaconTtlMs = maxOf(beaconTimeout, 30_000L)
@@ -1081,7 +1098,7 @@ class BearoundTelemetrySDK private constructor() {
 
         when (config.scanPrecision) {
             ScanPrecision.HIGH -> startHighPrecision(config)
-            ScanPrecision.MEDIUM, ScanPrecision.LOW -> startDutyCycle(config)
+            ScanPrecision.MEDIUM, ScanPrecision.LOW -> startContinuousLowDuty(config)
         }
     }
 
@@ -1091,6 +1108,7 @@ class BearoundTelemetrySDK private constructor() {
     private fun startHighPrecision(config: SDKConfiguration) {
         Log.d(TAG, "HIGH precision: continuous scan, sync every ${config.syncInterval / 1000}s")
 
+        beaconManager.rangingScanMode = null
         beaconManager.startRanging()
 
         syncRunnable = object : Runnable {
@@ -1103,69 +1121,44 @@ class BearoundTelemetrySDK private constructor() {
     }
 
     /**
-     * MEDIUM/LOW precision: duty cycle with scan+pause windows
-     * MEDIUM: 3 cycles of 10s scan + 10s pause per 60s window
-     * LOW: 1 cycle of 10s scan + 50s pause per 60s window
+     * MEDIUM/LOW: ONE continuous scan registration with a hardware-managed duty cycle.
+     *
+     * MEDIUM → SCAN_MODE_BALANCED (controller listens ~1 s every ~5 s, ~20% duty);
+     * LOW → SCAN_MODE_LOW_POWER (~0.5 s every ~5 s, ~10% duty). Detections land every
+     * few seconds in both modes; sync stays on the 60 s timer.
+     *
+     * Replaces the manual 10 s-scan/10 s-pause duty cycle: that design consumed 3-4 of
+     * the 5 scan-starts/30 s the OS allows BY DESIGN, so any extra start (watchdog,
+     * batch revive, anti-downgrade refresh, fg/bg flip) tripped the quota and the OS
+     * silently starved every scanner for 30 s+ — field-observed on Moto G35 as
+     * "minutes without a beacon". One registration = zero start churn: the whole
+     * budget stays available for the recovery paths, and beacons never expire inside
+     * an artificial pause window.
      */
-    private fun startDutyCycle(config: SDKConfiguration) {
-        val scanDuration = config.precisionScanDuration
-        val pauseDuration = config.precisionPauseDuration
-        val cycleCount = config.precisionCycleCount
-        val cycleInterval = config.precisionCycleInterval
-
-        Log.d(TAG, "${config.scanPrecision} precision: ${cycleCount}x (${scanDuration/1000}s scan + ${pauseDuration/1000}s pause) per ${cycleInterval/1000}s window")
-
-        runDutyCycleWindow(scanDuration, pauseDuration, cycleCount, cycleInterval)
-    }
-
-    private fun runDutyCycleWindow(
-        scanDuration: Long,
-        pauseDuration: Long,
-        cycleCount: Int,
-        cycleInterval: Long
-    ) {
-        var currentCycle = 0
-
-        fun scheduleCycle() {
-            if (currentCycle >= cycleCount) {
-                // All cycles in this window done — sync and schedule next window
-                Log.d(TAG, "Duty cycle window complete — syncing and scheduling next window")
-                syncBeacons()
-
-                // Calculate remaining time until next window
-                val elapsedInWindow = cycleCount.toLong() * (scanDuration + pauseDuration)
-                val remainingDelay = maxOf(0L, cycleInterval - elapsedInWindow)
-
-                dutyCycleRunnable = Runnable {
-                    runDutyCycleWindow(scanDuration, pauseDuration, cycleCount, cycleInterval)
-                }
-                handler.postDelayed(dutyCycleRunnable!!, remainingDelay)
-                return
-            }
-
-            // Start scan phase
-            Log.d(TAG, "Duty cycle ${currentCycle + 1}/$cycleCount: starting scan (${scanDuration / 1000}s)")
-            beaconManager.resumeRanging()
-            bluetoothManager.resumeScanning()
-
-            // Schedule pause after scan duration
-            dutyCycleRunnable = Runnable {
-                Log.d(TAG, "Duty cycle ${currentCycle + 1}/$cycleCount: pausing (${pauseDuration / 1000}s)")
-                beaconManager.pauseRanging()
-                bluetoothManager.pauseScanning()
-                currentCycle++
-
-                // Schedule next cycle after pause
-                dutyCycleRunnable = Runnable {
-                    scheduleCycle()
-                }
-                handler.postDelayed(dutyCycleRunnable!!, pauseDuration)
-            }
-            handler.postDelayed(dutyCycleRunnable!!, scanDuration)
+    private fun startContinuousLowDuty(config: SDKConfiguration) {
+        val lowPower = config.scanPrecision == ScanPrecision.LOW
+        beaconManager.rangingScanMode = if (lowPower) {
+            android.bluetooth.le.ScanSettings.SCAN_MODE_LOW_POWER
+        } else {
+            android.bluetooth.le.ScanSettings.SCAN_MODE_BALANCED
         }
 
-        // Start first cycle immediately
-        scheduleCycle()
+        Log.d(
+            TAG,
+            "${config.scanPrecision} precision: continuous " +
+                (if (lowPower) "LOW_POWER (~10% hardware duty)" else "BALANCED (~20% hardware duty)") +
+                " scan, sync every ${config.syncInterval / 1000}s"
+        )
+
+        beaconManager.startRanging()
+
+        syncRunnable = object : Runnable {
+            override fun run() {
+                syncBeacons()
+                handler.postDelayed(this, config.syncInterval)
+            }
+        }
+        handler.postDelayed(syncRunnable!!, config.syncInterval)
     }
 
     private fun restartSyncTimer() {
@@ -1177,8 +1170,6 @@ class BearoundTelemetrySDK private constructor() {
     private fun stopSyncTimer() {
         syncRunnable?.let { handler.removeCallbacks(it) }
         syncRunnable = null
-        dutyCycleRunnable?.let { handler.removeCallbacks(it) }
-        dutyCycleRunnable = null
     }
 
     /**
