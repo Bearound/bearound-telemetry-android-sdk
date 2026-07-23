@@ -166,6 +166,12 @@ telemetry.configure(businessToken = "your-business-token")
 telemetry.startScanning()
 ```
 
+`configure` also takes `scanPrecision` (`ScanPrecision.HIGH` / `MEDIUM` / `LOW`,
+default `MEDIUM`): it prices the **background** radio duty (one continuous
+hardware-managed scan — BALANCED ~20% / LOW_POWER ~10%) and the sync cadence.
+In the **foreground** every precision scans at `LOW_LATENCY` — detection always
+feels fluid while the app is in use.
+
 `stopScanning()` stops collection. The public surface mirrors the main SDK —
 `reliabilityStatus()`, `diagnostics()`, battery-optimization helpers, foreground-service
 opt-in (`enableForegroundScanning`) — see the KDoc.
