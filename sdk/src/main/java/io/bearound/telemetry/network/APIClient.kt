@@ -223,6 +223,10 @@ class APIClient(private val configuration: SDKConfiguration) {
             put("appId", sdkInfo.appId)
             put("build", sdkInfo.build)
             put("technology", sdkInfo.technology)
+            // Origin discriminator — hardcoded, never overridable by integrators
+            // (unlike `technology`, which wrappers rebrand): every event from this
+            // SDK comes from the Bearound Telemetry product.
+            put("product", "telemetry")
         }
         payload.put("sdk", sdkObj)
 
