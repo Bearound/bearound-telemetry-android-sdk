@@ -99,7 +99,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle — dependencies
 dependencies {
-    implementation 'com.github.Bearound:bearound-telemetry-android-sdk:v0.1.2'
+    implementation 'com.github.Bearound:bearound-telemetry-android-sdk:v0.1.3'
 }
 ```
 
@@ -208,9 +208,10 @@ BearoundTelemetrySDK.getInstance(this).configure(businessToken = "your-business-
 
 ## Roadmap
 
-- [x] `configure(bearoundSdk)` overload — pass the tracking instance itself (dynamic
-      handoff today; becomes statically typed via `compileOnly` once the tracking
-      SDK's handoff release ships)
+- [x] `configure(bearoundSdk)` overload — pass the tracking instance itself. The
+      handoff is dynamic **by design** (no compile-time dependency on the tracking
+      SDK): it is what lets the Flutter/React Native wrappers hand off reflectively
+      when both SDKs share an app, with no version coupling between the two.
 - [ ] Sample app + CI
 - [ ] Release workflow (tags → JitPack), mirroring the main SDK train
 - [ ] Shared-scan optimization in companion mode (single scan client feeding both SDKs)
