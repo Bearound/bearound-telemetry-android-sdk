@@ -24,11 +24,10 @@ alongside it, or standalone in apps that cannot ask for location.
 
 [![Agent setup prompt](https://img.shields.io/badge/Agent_setup_prompt-open_%26_copy-2563eb?style=for-the-badge)](./AI-AGENT-SETUP.md)
 
-> [!WARNING]
-> **Status: preview (0.1.x).** Split of `bearound-android-sdk` 3.5.1. The sync payload
-> currently mirrors the main SDK 1:1 while validation runs against the ingest pipeline;
-> trimming it to the pure telemetry domain (beacon-side data only) is the next step.
-> Not production-ready yet.
+> [!NOTE]
+> **Payload compatibility.** The sync payload is intentionally identical to the main
+> Bearound SDK's — same ingest endpoint, same schema, zero backend changes. What differs
+> is the permission model and the product scope (beacon-hardware telemetry only).
 
 ## What the SDK collects
 
@@ -207,7 +206,6 @@ BearoundTelemetrySDK.getInstance(this).configure(businessToken = "your-business-
 
 ## Roadmap
 
-- [ ] Trim the sync payload to the telemetry domain (beacon-side data, anonymous)
 - [x] `configure(bearoundSdk)` overload — pass the tracking instance itself (dynamic
       handoff today; becomes statically typed via `compileOnly` once the tracking
       SDK's handoff release ships)
