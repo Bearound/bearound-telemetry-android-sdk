@@ -42,8 +42,11 @@ Detection matches every Bearound hardware generation — `0xBEAD` service data, 
 manufacturer data, and the Bearound iBeacon frame (identity-only until a sensor frame is
 captured).
 
-**What it never collects**: user location or movement, proximity/distance estimates,
-advertising IDs, or anything about people. Beacon hardware health only.
+**What it never collects**: user location, movement profiles, advertising IDs, or
+anything about people. Beacon hardware health only. (For schema compatibility with the
+main SDK, per-beacon radio fields — RSSI and its derived proximity bucket for the
+encounter — travel in the payload; they describe the radio link to the beacon, and this
+SDK never uses them for positioning.)
 
 ## Two integration modes — plug & play
 
