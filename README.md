@@ -96,8 +96,7 @@ dependencyResolutionManagement {
 
 // app/build.gradle — dependencies
 dependencies {
-    implementation 'com.github.Bearound:bearound-telemetry-android-sdk:main-SNAPSHOT'
-    // pin a tagged version once the first release is cut
+    implementation 'com.github.Bearound:bearound-telemetry-android-sdk:v0.1.0'
 }
 ```
 
